@@ -1,0 +1,159 @@
+---
+title: "Pipeline Versión 0"
+author: "Francisco Pertíñez Perea"
+lang: es
+format:
+  html:
+    code-tools: true
+    code-fold: true
+---
+
+```{python}
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+```
+
+```{python}
+train_data = pd.read_csv("../data/training_data.csv", sep = ',', header = 0, 
+                         na_values = ['?','','NA'])
+test_data = pd.read_csv("../data/test_data.csv", sep = ',', header = 0, 
+                        na_values = ['?','','NA'])
+```
+
+```{python}
+train_ids = train_data["ID"]
+test_ids = test_data["ID"]
+target_var = train_data['RATE']
+train_data = train_data.drop("RATE", axis = 1)
+```
+
+```{python}
+train_data['Dataset'] = 'Train'
+test_data['Dataset'] = 'Test'
+data = pd.concat([train_data, test_data], ignore_index=True)
+```
+
+```{python}
+data = data.drop('ID', axis = 1)
+```
+
+```{python}
+encoder = OrdinalEncoder(categories=[['VLOW', 'LOW', 'MED', 'HIGH', 'VHIGH']], 
+                         dtype=int)
+data["X24"] = encoder.fit_transform(data[["X24"]])
+```
+
+```{python}
+encoder = OneHotEncoder(drop='if_binary')
+df_one_hot = pd.DataFrame(encoder.fit_transform(data[['X25']]).toarray(), 
+                          columns=encoder.get_feature_names_out(['X25']))
+data = pd.concat([data, df_one_hot], axis=1)
+data = data.drop('X25', axis=1)
+```
+
+```{python}
+encoder = OneHotEncoder(sparse_output=False, dtype=np.float64)
+df_one_hot = pd.DataFrame(encoder.fit_transform(data[['X30']]), 
+                          columns=encoder.get_feature_names_out(['X30']))
+data = pd.concat([data, df_one_hot], axis=1)
+data = data.drop('X30', axis=1)
+```
+
+```{python}
+data = data.drop('X4', axis = 1)
+```
+
+```{python}
+imputer = SimpleImputer(strategy='median')
+data["X21"] = imputer.fit_transform(data[["X21"]])
+```
+
+```{python}
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('lgr', LogisticRegression())
+])
+```
+
+
+```{python}
+grid_params = {
+    'lgr__penalty': [None, 'l1', 'l2'],
+    'lgr__C': np.logspace(-3, 3, 50),
+    'lgr__solver': ['lbfgs', 'liblinear', 'newton-cg', 'newton-cholesky', 'sag', 'saga']
+}
+```
+
+
+```{python}
+grid_search = GridSearchCV(pipeline, grid_params, cv=5, scoring='accuracy', verbose=1)
+```
+
+
+```{python}
+X_train = data[data['Dataset'] == 'Train'].drop('Dataset', axis=1)
+y_train = target_var
+X_test = data[data['Dataset'] == 'Test'].drop('Dataset', axis=1)
+
+grid_search.fit(X_train, y_train)
+```
+
+```{python}
+grid_search.best_score_
+```
+
+
+```{python}
+grid_search.best_params_
+```
+
+```{python}
+best_model = LogisticRegression(C=grid_search.best_params_['lgr__C'],
+                                penalty=grid_search.best_params_['lgr__penalty'],
+                                solver=grid_search.best_params_['lgr__solver'])
+
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('lgr', best_model)
+])
+
+pipeline.fit(X_train,y_train)
+y_pred = pipeline.predict(X_test)
+```
+
+
+```{python}
+y_pred
+```
+
+# Resultados en función de GridSearchCV
+
+grid_params = {
+    'lgr__penalty': ['none', 'l1', 'l2'],
+    'lgr__C': np.logspace(-4, 4, 50),
+    'lgr__solver': ['lbfgs', 'liblinear', 'newton-cg', 'newton-cholesky', 'sag', 'saga']
+}
+
+{'lgr__C': 0.2682695795279725, 'lgr__penalty': 'l1', 'lgr__solver': 'saga'}
+
+Resultado -> 0.6611316859935645
+
+----
+
+grid_params = {
+    'lgr__penalty': ['none', 'l1', 'l2'],
+    'lgr__C': np.logspace(-3, 3, 50),
+    'lgr__solver': ['lbfgs', 'liblinear', 'newton-cg', 'newton-cholesky', 'sag', 'saga']
+}
+
+{'lgr__C': 0.28117686979742307, 'lgr__penalty': 'l1', 'lgr__solver': 'saga'}
+
+Resultado -> 0.6611316859935645

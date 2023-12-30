@@ -1,5 +1,5 @@
 ---
-title: "Pipeline Versión 0"
+title: "Pipeline Versión 1"
 author: "Francisco Pertíñez Perea"
 lang: es
 format:
@@ -8,10 +8,10 @@ format:
     code-fold: true
 ---
 
-**Características**:
+**Características**
 
 - Eliminación X4
-- Imputación valores faltantes X21 --> SimpleImputer()
+- Imputación valores faltantes X21 --> KNNImputer()
 
 ```{python}
 import pandas as pd
@@ -20,7 +20,7 @@ from sklearn.preprocessing import OrdinalEncoder
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
+from sklearn.impute import KNNImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
@@ -53,7 +53,7 @@ data = data.drop('ID', axis = 1)
 
 ```{python}
 encoder = OrdinalEncoder(categories=[['VLOW', 'LOW', 'MED', 'HIGH', 'VHIGH']], 
-                         dtype=int)
+                         dtype=float)
 data["X24"] = encoder.fit_transform(data[["X24"]])
 ```
 
@@ -77,11 +77,10 @@ data = data.drop('X30', axis=1)
 data = data.drop('X4', axis = 1)
 ```
 
-
 ```{python}
 preprocessor = ColumnTransformer(
     transformers=[
-        ('impute_X21', SimpleImputer(), ['X21'])
+        ('impute_X21', KNNImputer(), ['X21'])
     ],
 
     remainder='passthrough'
@@ -97,10 +96,11 @@ pipeline = Pipeline([
 
 ```{python}
 grid_params = {
-    'preprocessor__impute_X21__strategy': ['mean', 'median', 'most_frequent'],
+    'preprocessor__impute_X21__n_neighbors': [5, 10, 15],
     'lgr__penalty': ['l1', 'l2'],
     'lgr__C': np.logspace(-3, 3, 50),
-    'lgr__solver': ['lbfgs', 'liblinear', 'newton-cg', 'newton-cholesky', 'sag', 'saga']
+    'lgr__solver': ['lbfgs', 'liblinear', 'newton-cg', 
+                    'newton-cholesky', 'sag', 'saga'],
 }
 ```
 
@@ -122,15 +122,10 @@ grid_search.fit(X_train, y_train)
 grid_search.best_score_
 ```
 
-
-```{python}
-grid_search.best_params_
-```
-
 ```{python}
 best_preprocessor = ColumnTransformer(
     transformers=[
-        ('impute_X21', SimpleImputer(strategy=grid_search.best_params_['preprocessor__impute_X21__strategy']), ['X21'])
+        ('impute_X21', KNNImputer(n_neighbors=grid_search.best_params_['preprocessor__impute_X21__n_neighbors']), ['X21'])
     ],
 
     remainder='passthrough'
@@ -155,11 +150,20 @@ y_pred = pipeline.predict(X_test)
 y_pred
 ```
 
-# Resultados en función de GridSearchCV
+# Resultados
 
-{'lgr__C': 6.25055192527397,
+{'imputer__n_neighbors': 10,
+ 'lgr__C': 14.563484775012444,
  'lgr__penalty': 'l2',
- 'lgr__solver': 'newton-cg',
- 'preprocessor__impute_X21__strategy': 'most_frequent'}
+ 'lgr__solver': 'newton-cg'}
 
-Entrenamiento -> 0.6644405318438468
+Entrenamiento -> 0.6622427296460446
+
+-----
+
+{'lgr__C': 0.28117686979742307,
+ 'lgr__penalty': 'l1',
+ 'lgr__solver': 'saga',
+ 'preprocessor__impute_X21__n_neighbors': 5}
+
+ Entrenamiento -> 0.6633477020217351

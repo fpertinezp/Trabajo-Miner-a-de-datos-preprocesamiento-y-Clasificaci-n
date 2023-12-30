@@ -1,0 +1,396 @@
+---
+title: "Trabajo Minería de datos: preprocesamiento y clasificación"
+author: "Francisco Pertíñez Perea"
+lang: es
+format:
+  html:
+    code-tools: true
+    code-fold: true
+---
+
+# Análisis exploratorio de datos
+
+## Definición del problema
+
+**Descripción del dataset**: el conjunto de datos tiene 39 atributos de entrada, 4 clases (calificación crediticia) y 1295 ejemplos. El 80% de ellos se utilizarán como datos de entrenamiento y estarán a disposición de los competidores. El 20% restante se utilizará como datos de prueba y para la clasificación privada.
+
+**Objetivo de la competición**: es predecir la calificación crediticia con datos anónimos de los clientes de un banco. El conjunto de datos es muy limitado y se desconocen las transformaciones que han sufrido los datos, así como el significado de los atributos. Hay cuatro calificaciones crediticias para clasificar.
+
+**Evaluación**: las propuestas se evalúan en función de la precisión entre las cuatro clases.
+
+En base al objetivo descrito sabemos que nos encontramos ante un *Problema de Clasificación*
+
+## Estudio del conjunto de datos
+
+### Estructura del conjunto de datos
+
+A continuación vamos a leer el conjunto de entrenamiento y test para juntarlos y ver con qué clase de datos vamos a trabajar:
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from yellowbrick.features import Rank1D, Rank2D
+```
+
+```{python}
+train_data = pd.read_csv("training_data.csv", sep = ',', header = 0, 
+                         na_values = ['?','','NA'])
+test_data = pd.read_csv("test_data.csv", sep = ',', header = 0, 
+                        na_values = ['?','','NA'])
+```
+
+Guardamos la variable objetivo a parte de las variables independientes para trabajar mejor con estas:
+
+```{python}
+target_var = train_data['RATE']
+train_data = train_data.drop("RATE", axis = 1)
+```
+
+Y concatenamos ambos conjuntos de datos para realizar el EDA sobre todos los datos:
+
+```{python}
+data = pd.concat([train_data, test_data], ignore_index=True)
+```
+
+Una vez tenemos todo preparado revisemos dicho conjunto de datos:
+
+```{python}
+data.head(5)
+```
+
+```{python}
+target_var.head(5)
+```
+
+```{python}
+data.info()
+```
+
+```{python}
+target_var.info()
+```
+
+A partir de la función `info` podemos obtener la siguiente información:
+
+**Instancias**: cada instancia representa la información de un cliente del banco que describe su situación crediticia.
+
+**Regresores/variables independientes**:
+
+- ID: identificador del cliente en el banco.
+- X1 - X39: cada una de estas variables describen un aspecto diferente sobre la situación del cliente en el banco.
+
+**Variable objetivo/variable dependiente**:
+
+- RATE: calificación crediticia del cliente.
+
+**Tipado de las variables**: salvo las variables X24, X25, X30 y RATE, que son categóricas, las demás variables son numéricas.
+
+### Eliminación de variables
+
+Revisando cada una de las variables que componen el dataset, concluimos que la variable ID no aporta información útil para el aprendizaje del modelo de clasifiación, pues es simplemente el identificador de cada cliente del banco. Dicho esto la eliminamos.
+
+```{python}
+data = data.drop('ID', axis = 1)
+```
+
+```{python}
+data.info()
+```
+
+### Instancias duplicadas
+
+Comprobemos si hay instancias duplicadas en el conjunto de datos:
+
+```{python}
+data.duplicated().any()
+```
+
+Como podemos observar no tenemos instancias duplicadas.
+
+### Valores faltantes
+
+Comprobemos si existen valores faltantes en el conjunto de datos:
+
+```{python}
+data.isna().sum().sort_values(ascending = False)
+```
+
+Podemos observar que las variables independientes X4 y X21 son las únicas que presentan valores faltantes. Veámos gráficamente cuantos valores faltantes presentan.
+
+```{python}
+sns.heatmap(data.isna(), cmap='YlGnBu', vmin=0, vmax=1)
+```
+
+A partir del gráfico podemos observar que la variable X4 presenta una cantidad considerable de valores faltantes. Véamos la proporción de valores faltantes en las variables para hacernos una idea más exacta.
+
+```{python}
+data.isna().sum().sort_values(ascending = False) / data.shape[0]
+```
+
+El 28'4% de los valores de X4 son faltantes. En cuanto a la variable X21, el 13'4% de valores son faltantes.
+
+En resumen, la variable X4 presenta una cantidad de valores faltantes como para tener en cuenta la posibilidad de eliminarla. En el caso de X21 es posible que realizando alguna clase de imputación podamos resolver el problema. 
+
+Con la información que obtengamos con la estadística descriptiva y técnicas de visualización tomaremos una decisión más robusta.
+
+### Estadística descriptiva:
+
+En primer lugar dividamos las variables numéricas de las categóricas para facilitar el análisis de cada una por separado:
+
+```{python}
+numeric_cols = data.drop(['X24', 'X25', 'X30'], axis = 1)
+categorical_cols = data[['X24', 'X25', 'X30']]
+categorical_cols['RATE'] = target_var
+```
+
+Comprobemos que dicha división se ha hecho correctamente:
+
+```{python}
+print(numeric_cols.columns)
+print(categorical_cols.columns)
+```
+
+#### Variables numéricas
+
+##### Análisis de tendencia central
+
+Comenzamos calculando la media y la mediana de las variables independientes:
+
+```{python}
+pd.DataFrame({
+    'Mean': numeric_cols.mean(skipna = True),
+    'Median': numeric_cols.median(skipna = True)
+})
+```
+
+##### Análisis de dispersión
+
+**Mínimo, Máximo y Rango**:
+
+```{python}
+pd.DataFrame({
+    'Minimum': numeric_cols.min(skipna=True),
+    'Maximum': numeric_cols.max(skipna=True),
+    'Range': numeric_cols.max(skipna=True) - numeric_cols.min(skipna=True)
+})
+```
+
+**Desviación estándar y varianza**:
+
+```{python}
+pd.DataFrame({
+    'Standard Deviation': numeric_cols.std(skipna=True),
+    'Variance': numeric_cols.var(skipna=True)
+})
+```
+
+**Observaciones** 
+
+- Muchas variables presentan la mayoría de los datos entorno a la media (baja desviación típica) por lo que son un indicio que su forma se asemeja a una distribución normal, algo bueno de cara a el funcionamiento de los modelos.
+
+- Muchas de las variables parecen presentar distribuciones simétricas (media parecida a mediana) aunque una cierta cantidad de ellas no.
+
+#### Variables categoricas
+
+##### Tablas de contingencia
+
+```{python}
+print(categorical_cols['X24'].value_counts())
+```
+
+```{python}
+print(categorical_cols['X25'].value_counts())
+```
+
+```{python}
+print(categorical_cols['X30'].value_counts())
+```
+
+```{python}
+target_var[data['X30'] == 'KUHMP']
+```
+
+```{python}
+target_var[data['X30'] == 'XNHTQ']
+```
+
+```{python}
+target_var[data['X30'] == 'ASKVR']
+```
+
+```{python}
+target_var[data['X30'] == 'GXZVX']
+```
+
+```{python}
+target_var[data['X30'] == 'CLPXZ']
+```
+
+```{python}
+print(categorical_cols['RATE'].value_counts())
+```
+
+**Observaciones**:
+
+-  Desequilibrio en las clases de X24, pero parece ser un desequilibrio con sentido natural (en rango medio hay más instancias y cuanto vamos más a los extremos menos hay)
+
+- X25 presente bastante equilibrio entre las dos clases.
+
+- X30 presente un desequilibrio muy fuerte. Casi la totalidad de las instancias pertenecen a la clase VTKGN.
+
+- RATE presenta un desequilibrio considerable en la clase A respecto a las demás.
+
+### Visualización de datos
+
+#### Variables numéricas
+
+##### Histogramas
+
+```{python}
+def plot_hist(data):
+  for column in data.columns:
+    sns.displot(x=column, data=data, kde=True)
+    plt.title(f'Distribución - {column}')
+    plt.xlabel('Valor')
+    plt.ylabel('Frecuencia')
+    plt.show()
+```
+
+```{python}
+plot_hist(numeric_cols)
+```
+
+**Observaciones**
+
+- Lo dicho con la estadística descriptiva concuerda.
+
+- X3 presenta la mayoría de los valores bastante alejados de la media y la mediana.
+
+- X21 presenta la mayoría de los datos cercanos a la media y mediana (sobre todo la segunda).
+
+#### Graficos de caja
+
+```{python}
+def plot_boxplot(data):
+  for column in data.columns:
+    sns.catplot(x=column, data=data, kind='box')
+    plt.title(f'Boxplot - {column}')
+    plt.xlabel('Valor')
+    plt.show()
+```
+
+```{python}
+plot_boxplot(numeric_cols)
+```
+
+**Observaciones**
+
+- La mayoría de las variables presentan varios valores atípicos, en muchos de los casos esto es debido a que al tener una muy baja variabilidad una variable, muchos valores son tomados como outliers al estar algo alejados de la mediana.
+
+#### Variables categóricas
+
+##### Graficos de barras
+
+```{python}
+def plot_bar(data):
+  for column in data.columns:
+    if data[column].dtype == 'O':  # Verificar si la columna es de tipo categórica
+      sns.countplot(x=column, data=data)
+      plt.title(f'Diagrama de Barras - {column}')
+      plt.xlabel('Categoría')
+      plt.ylabel('Frecuencia')
+      plt.show()
+```
+
+```{python}
+plot_bar(categorical_cols)
+```
+
+**Observaciones**
+
+- Las mismas que las obtenidas con las tablas de contingencia.
+
+#### Relaciones entre variables
+
+##### Correlación entre variables numéricas
+
+```{python}
+visualizer = Rank2D(algorithm='pearson').fit(numeric_cols, numeric_cols)
+visualizer.transform(numeric_cols); 
+visualizer.show()
+```
+
+**Observaciones**
+
+- En general, no hay un problema de alta correlación entre variables en el conjunto de datos.
+
+- Las variables X1, X2, ... X8, X10 Y X11 presentan una fuerte correlación entre ellas. 
+
+### Transformación de variables categóricas
+
+Dado que el modelo que vamos a realizar es regresión logística, necesitamos que todas las variables independientes sean de tipo numérico. Esto implica que debamos realizar transformaciones sobre las variables independientes de tipo categórico.
+
+Revisamos una por una para ver qué transformación le conviene más a cada una. Empezaremos con X24:
+
+```{python}
+data["X24"].value_counts()
+```
+
+Podemos observar que los distintos valores que tiene presentan una relación de tipo ordinal (VLOW < LOW < MED < HIGH < VHIGH). Usaremos un OrdinalEncoder en base a esto.
+
+Comprobemos se ha codificado correctamente:
+
+```{python}
+data["X24"].value_counts()
+```
+
+Como podemos ver, la codifiación se ha realizado como esperábamos, además al haber introducido el orden estamos generando información adicional para el modelo
+
+Sigamos con la variable X25:
+
+```{python}
+data["X25"].value_counts()
+```
+
+En este caso tenemos dos posibles valores: YES y NO. Utilizaremos la binarización para esta variable.
+
+A continuación revisaremos la variable X30:
+
+```{python}
+data["X30"].value_counts()
+```
+
+En este caso a simple vista no parece haber ningún tipo de relación entre los distintos valores, por lo que utilizaremos una codificación one-hot
+
+
+## Posibles decisiones
+
+**¿Qué hacemos con los valores faltantes?**
+
+*X4*: tenemos casi un tercio de valores faltantes para dicha variables, lo cual es bastante. Tenemos dos opciones:
+
+- Eliminar la variable.
+- Buscar algún tipo de imputación, pero no puede ser respecto a la media o variable porque diefiere bastante de los valores habituales.
+
+*X21: Tenemos aproximadamente un décimo de valores faltantes, lo cual es manejable desde el punto de vista de la imputación. Tenemos dos opciones:
+
+- Imputar con la media, pues es más o menos una buena representante de la distribución de la variable.
+
+- Utilizar algún tipo de imputación más avanzada como KNN, pero implica buscar el valor óptimo de K.
+
+**Desequilibrio entre clases de variables categóricas**
+
+- X30 presente un desequilibrio muy fuerte. Casi la totalidad de las instancias pertenecen a la clase VTKGN. Tal vez unificar las clases minoritarias en una sola puede venir bien
+
+- RATE, la clase objetivo, presenta un desequilibrio considerable en la clase A respecto a las demás. Puede que el modelo le cuesta más clasificar esa clase que las demás, por lo que la técnica de Sobre Muestreo puede venir bien 
+
+**Correlación entre variables X1, X2, ... X8, X10 Y X11**
+
+Existe una fuerte correlación entre dichas variables (y algunas más), por lo que la información que presentan es redundante entre estas. Técnicas como PCA o selección de características pueden tener buenos resultados. 
+
+**Tratamiento de valores atípicos**
+
+En muchas de las variables aparecen una gran cantidad de valores atípicos, pero esto es debido en gran parte a que la variabilidad de los datos es muy baja. Si queremos quitar outliers debemos tener cuidado de no ser muy estrictos pues podemos quitar un gran número de instancias.
+

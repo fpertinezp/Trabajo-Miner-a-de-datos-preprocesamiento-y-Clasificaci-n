@@ -11,14 +11,17 @@ format:
 **Características**:
 
 - Eliminación X4
-- Imputación valores faltantes X21 --> SimpleImputer()
+- Imputación valores faltantes X21 --> KNNImputer()
+- Tratamiento de valores atípicos con -> IsolationForest() 
+
 
 ```{python}
 import os
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler
-from sklearn.impute import SimpleImputer
+from sklearn.ensemble import IsolationForest
+from sklearn.impute import KNNImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.pipeline import Pipeline
@@ -73,9 +76,20 @@ data = data.drop('X30', axis=1)
 ```
 
 ```{python}
+clf = IsolationForest()
+clf.fit(data[data['Dataset'] == 'Train'].drop(['Dataset', 'X21'], axis=1))
+outliers = clf.predict(data[data['Dataset'] == 'Train'].drop(['Dataset', 'X21'], axis=1)) < 1
+```
+
+```{python}
+data[data['Dataset'] == 'Train'] = data[data['Dataset'] == 'Train'][~outliers]
+train_target = train_target[~outliers]
+```
+
+```{python}
 preprocessor = ColumnTransformer(
     transformers=[
-        ('impute_X21', SimpleImputer(), ['X21'])
+        ('impute_X21', KNNImputer(), ['X21'])
     ],
 
     remainder='passthrough'
@@ -91,7 +105,7 @@ pipeline = Pipeline([
 
 ```{python}
 grid_params = {
-    'preprocessor__impute_X21__strategy': ['mean', 'median', 'most_frequent'],
+    'preprocessor__impute_X21__n_neighbors': [5, 10, 15],
     'lgr__penalty': ['l1', 'l2'],
     'lgr__C': np.logspace(-3, 3, 50),
     'lgr__solver': ['lbfgs', 'liblinear', 'newton-cg', 'newton-cholesky', 'sag', 'saga']
@@ -124,7 +138,7 @@ grid_search.best_params_
 ```{python}
 best_preprocessor = ColumnTransformer(
     transformers=[
-        ('impute_X21', SimpleImputer(strategy=grid_search.best_params_['preprocessor__impute_X21__strategy']), ['X21'])
+        ('impute_X21', KNNImputer(n_neighbors=grid_search.best_params_['preprocessor__impute_X21__n_neighbors']), ['X21'])
     ],
 
     remainder='passthrough'
@@ -169,8 +183,8 @@ print('Test accuracy:', sum_te/N)
 ```
 
 ```{python}
-#result = pd.DataFrame({'ID': test_ids, 'RATE': y_pred})
-#result.to_csv('../prediction/predV0.csv', index=False)
+result = pd.DataFrame({'ID': test_ids, 'RATE': y_pred})
+result.to_csv('../prediction/predV6.1.csv', index=False)
 ```
 
 ```{python}
@@ -201,9 +215,9 @@ print(f'Different: {different}')
 
 # Resultados
 
-{'lgr__C': 6.25055192527397,
- 'lgr__penalty': 'l2',
- 'lgr__solver': 'newton-cg',
- 'preprocessor__impute_X21__strategy': 'most_frequent'}
+{'lgr__C': 0.49417133613238334,
+ 'lgr__penalty': 'l1',
+ 'lgr__solver': 'saga',
+ 'preprocessor__impute_X21__n_neighbors': 5}
 
-Entrenamiento -> 0.6644405318438468
+Entrenamiento -> 0.6745005221023319

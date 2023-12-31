@@ -17,17 +17,13 @@ format:
 ```{python}
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import OrdinalEncoder
-from sklearn.preprocessing import LabelBinarizer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
 ```
 
 ```{python}
@@ -40,7 +36,7 @@ test_data = pd.read_csv("../data/test_data.csv", sep = ',', header = 0,
 ```{python}
 train_ids = train_data["ID"]
 test_ids = test_data["ID"]
-target_var = train_data['RATE']
+train_target = train_data['RATE']
 train_data = train_data.drop("RATE", axis = 1)
 ```
 
@@ -52,6 +48,7 @@ data = pd.concat([train_data, test_data], ignore_index=True)
 
 ```{python}
 data = data.drop('ID', axis = 1)
+data = data.drop('X4', axis = 1)
 ```
 
 ```{python}
@@ -75,11 +72,6 @@ df_one_hot = pd.DataFrame(encoder.fit_transform(data[['X30']]),
 data = pd.concat([data, df_one_hot], axis=1)
 data = data.drop('X30', axis=1)
 ```
-
-```{python}
-data = data.drop('X4', axis = 1)
-```
-
 
 ```{python}
 preprocessor = ColumnTransformer(
@@ -117,7 +109,7 @@ grid_search = GridSearchCV(pipeline, grid_params, cv=5, scoring='accuracy', verb
 
 ```{python}
 X_train = data[data['Dataset'] == 'Train'].drop('Dataset', axis=1)
-y_train = target_var
+y_train = train_target
 X_test = data[data['Dataset'] == 'Test'].drop('Dataset', axis=1)
 
 grid_search.fit(X_train, y_train)
@@ -161,16 +153,6 @@ y_pred = pipeline.predict(X_test)
 y_pred
 ```
 
-**Resultados**
-
-{'lgr__C': 19.306977288832496,
- 'lgr__penalty': 'l2',
- 'lgr__solver': 'newton-cg',
- 'pca__n_components': 15,
- 'preprocessor__impute_X21__strategy': 'most_frequent'}
-
- Entrenamiento -> 0.6280371562139517
-
  
 ```{python}
 sum_tr = 0
@@ -190,3 +172,54 @@ for i in range(N):
 print('Train accuracy:', sum_tr/N)
 print('Test accuracy:', sum_te/N)
 ```
+
+```{python}
+#result = pd.DataFrame({'ID': test_ids, 'RATE': y_pred})
+#result.to_csv('../prediction/predV3.csv', index=False)
+```
+
+```{python}
+directory = '../prediction/'
+files = os.listdir(directory)
+
+same = 0
+different = 0
+
+for file in files:
+    df_csv = pd.read_csv(directory + file)
+    different_indices = np.where(df_csv['RATE'] != y_pred)[0]
+    
+    if len(different_indices) == 0:
+        same += 1
+        print(f'Same file: {file}')
+        print('\n')
+    else:
+        different += 1
+        print(f'Different file: {file}')
+        print(f'Number of differences: {len(different_indices)}')
+        print('\n')
+
+print('\n\n')
+print(f'Same: {same - 1}')  # Minus itself
+print(f'Different: {different}')
+```
+
+# Resultados
+
+{'lgr__C': 19.306977288832496,
+ 'lgr__penalty': 'l2',
+ 'lgr__solver': 'newton-cg',
+ 'pca__n_components': 15,
+ 'preprocessor__impute_X21__strategy': 'most_frequent'}
+
+ Entrenamiento -> 0.6280371562139517
+
+ ---
+
+ {'lgr__C': 754.3120063354608,
+ 'lgr__penalty': 'l2',
+ 'lgr__solver': 'lbfgs',
+ 'pca__n_components': 15,
+ 'preprocessor__impute_X21__strategy': 'most_frequent'}
+
+ 0.6269321838382613
